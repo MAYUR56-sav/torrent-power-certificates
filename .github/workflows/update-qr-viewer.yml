@@ -1,0 +1,70 @@
+name: Update certificate QR links
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/update-qr-viewer.yml'
+      - 'trigger-viewer.txt'
+
+permissions:
+  contents: write
+
+jobs:
+  update-qr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install tools
+        run: pip install pymupdf qrcode[pil]
+
+      - name: Replace QR destinations
+        run: |
+          python - <<'PY'
+          import fitz, os, re, qrcode
+          from io import BytesIO
+
+          folder = 'c'
+          for name in sorted(os.listdir(folder)):
+              if not name.endswith('.pdf'):
+                  continue
+              m = re.fullmatch(r'(\d{2})\.pdf', name)
+              if not m:
+                  continue
+              n = m.group(1)
+              url = f'https://github.com/MAYUR56-sav/torrent-power-certificates/blob/main/c/{n}.pdf'
+
+              qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M, border=2)
+              qr.add_data(url)
+              qr.make(fit=True)
+              img = qr.make_image().convert('RGB')
+              buf = BytesIO()
+              img.save(buf, format='PNG')
+
+              path = os.path.join(folder, name)
+              doc = fitz.open(path)
+              page = doc[0]
+              rect = fitz.Rect(346, 648.5, 420, 722.5)
+              page.draw_rect(rect, color=(1,1,1), fill=(1,1,1), overlay=True)
+              page.insert_image(rect, stream=buf.getvalue(), overlay=True)
+              tmp = path + '.tmp.pdf'
+              doc.save(tmp, garbage=4, deflate=True)
+              doc.close()
+              os.replace(tmp, path)
+          PY
+
+      - name: Commit updated PDFs
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add c/*.pdf
+          git diff --cached --quiet && echo 'No PDF changes needed.' && exit 0
+          git commit -m 'Update certificate QR links to GitHub viewer pages'
+          git push

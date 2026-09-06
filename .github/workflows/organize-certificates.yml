@@ -1,0 +1,39 @@
+name: Organize certificate PDFs
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  organize:
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Move certificates to QR paths
+        shell: bash
+        run: |
+          mkdir -p c
+          for f in Certificate_*.pdf; do
+            [ -f "$f" ] || continue
+            num=$(printf '%s\n' "$f" | sed -E 's/^Certificate_([0-9]+)_.*/\1/')
+            mv "$f" "c/${num}.pdf"
+          done
+
+      - name: Commit organized files
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Organize certificate PDFs for QR links"
+            git push
+          fi
